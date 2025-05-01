@@ -9,15 +9,19 @@ class URLMapping(Base):
     __tablename__ = "url_mapping"
 
     id = Column(Integer, primary_key=True, index=True)
-    original_url = Column(String, nullable=False)
+    original_url = Column(String, nullable=False, unique=True)
     short_code = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     visit_count = Column(Integer, default=0, nullable=False)
     # Relationship to VisitLog (optional, useful for ORM features)
     visits = relationship("VisitLog", back_populates="url_mapping", cascade="all, delete-orphan")
 
-    # Explicit UniqueConstraint for Alembic visibility
-    __table_args__ = (UniqueConstraint('short_code', name='uq_url_mapping_short_code'),)
+    # Individual uniqueness and composite uniqueness
+    __table_args__ = (
+        UniqueConstraint('short_code', name='uq_url_mapping_short_code'),
+        UniqueConstraint('original_url', name='uq_url_mapping_original_url'),
+        UniqueConstraint('original_url', 'short_code', name='uq_url_mapping_original_short'),
+    )
 
 
 class VisitLog(Base):

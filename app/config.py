@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,12 @@ class Settings(BaseSettings):
     )
     # Example "postgresql+psycopg://username:password@localhost:5432/db_name"
     PG_DSN: str = Field()
+    SHORT_CODE_LENGTH: int
+
+    REDIS_URL: str
+    REDIS_PORT: int
+    REDIS_DB_NUMBER: int
+    REDIS_PASSWORD: Optional[str] = None
 
 
 settings = Settings()
