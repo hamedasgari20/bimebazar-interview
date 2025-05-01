@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -39,8 +39,26 @@ async def create_short_url(url_in: url_schemas.URLCreate, session: AsyncSession 
 
 
 @router.get("/{short_code}")
-def redirect_to_url(short_code: str, request: Request, session: AsyncSession = Depends(get_db)):
-    pass
+async def redirect_to_original_url(
+        short_code: str,
+        request: Request,
+        background_tasks: BackgroundTasks,
+        session: AsyncSession = Depends(get_db)):
+    service = URLService(session)
+    try:
+        url_mapping, visit_tasks = await service.redirect_to_original_url(short_code=short_code, request=request)
+
+        # Add the visit tracking tasks to background tasks
+        for task in visit_tasks.tasks:
+            background_tasks.add_task(task.func, *task.args, **task.kwargs)
+
+        return {"Response": f"{url_mapping['original_url']}"}
+    except Exception as e:
+        logger.error(f"Error redirecting to URL: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while redirecting to URL."
+        )
 
 
 @router.get("/stats/{short_code}")

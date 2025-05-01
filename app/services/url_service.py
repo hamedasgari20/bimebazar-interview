@@ -1,12 +1,14 @@
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
+from fastapi import Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.redis import RedisManager
 from app.repositories import url_mapping_repository
 from app.schemas.url_schemas import URLCreate
+from app.tasks.url_tasks import increment_visit_count_task, create_visit_log_task
 from app.utils.short_code_generator import generate_short_code
 
 logger = logging.getLogger(__name__)
@@ -67,3 +69,62 @@ class URLService:
         except Exception as e:
             logger.error(f"Error in get_or_create_short_url: {e}", exc_info=True)
             raise Exception(f"Failed to create short URL: {str(e)}")
+
+    async def redirect_to_original_url(self, short_code: str, request: Request) -> Tuple[
+        Dict[str, Any], BackgroundTasks]:
+        """
+        Gets the original URL for a short code and returns background tasks for visit logging.
+        """
+        try:
+            # Try to get from Redis first
+            cached_mapping = await self.redis.get(f"short_code:{short_code}")
+            if cached_mapping:
+                url_mapping = json.loads(cached_mapping)
+                background_tasks = self._create_visit_background_tasks(url_mapping['id'], request)
+                return url_mapping, background_tasks
+
+            # Try to get from database
+            db_object = await url_mapping_repository.get_url_by_short_code(
+                self.db,
+                short_code=short_code
+            )
+
+            if not db_object:
+                raise ValueError(f"Short URL not found: {short_code}")
+
+            # Cache the result
+            serialized_object = self._model_to_dict(db_object)
+            await self.redis.set(f"short_code:{short_code}", json.dumps(serialized_object))
+
+            background_tasks = self._create_visit_background_tasks(db_object.id, request)
+            return serialized_object, background_tasks
+
+        except ValueError as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Error in redirect_to_original_url: {e}", exc_info=True)
+            raise Exception(f"Failed to get original URL: {str(e)}")
+
+    def _create_visit_background_tasks(self, url_mapping_id: int, request: Request) -> BackgroundTasks:
+        """Create background tasks for URL visit."""
+        background_tasks = BackgroundTasks()
+
+        # Get client information
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        # Add tasks to background tasks
+        background_tasks.add_task(
+            increment_visit_count_task,
+            self.db,
+            url_mapping_id
+        )
+        background_tasks.add_task(
+            create_visit_log_task,
+            self.db,
+            url_mapping_id=url_mapping_id,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        return background_tasks
