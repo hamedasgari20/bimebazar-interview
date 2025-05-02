@@ -1,6 +1,6 @@
 # URL Shortener Service
 
-![System Design](./system design.jpg)
+![System Design](./system_design.jpg)
 
 ## System Design Overview
 
