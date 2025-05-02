@@ -61,6 +61,19 @@ async def redirect_to_original_url(
         )
 
 
-@router.get("/stats/{short_code}")
-def get_url_stats(short_code: str, session: AsyncSession = Depends(get_db)):
-    pass
+@router.get("/stats/{short_code}", response_model=url_schemas.URLStats)
+async def get_url_statistics(short_code: str, session: AsyncSession = Depends(get_db)):
+    """
+    Retrieves statistics (like visit count) for a given short code.
+    """
+    service = URLService(session)
+    try:
+        stats_mapping = await service.get_url_stats(short_code=short_code)
+        # Map the DB model to the response schema
+        return url_schemas.URLStats.model_validate(stats_mapping)
+    except Exception as e:
+        logger.error(f"Error retrieving stats for {short_code}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving stats.",
+        )

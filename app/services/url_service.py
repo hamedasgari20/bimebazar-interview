@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Optional, Dict, Any, Tuple
 
-from fastapi import Request, BackgroundTasks
+from fastapi import Request, BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.redis import RedisManager
@@ -128,3 +128,26 @@ class URLService:
         )
 
         return background_tasks
+
+    async def get_url_stats(self, short_code: str):
+        """Retrieves statistics for a short code."""
+        try:
+            # Try to get from Redis first
+            cached_stats = await self.redis.get(f"stats:{short_code}")
+            if cached_stats:
+                return json.loads(cached_stats)
+
+            # If not in Redis, get from database
+            db_url = await url_mapping_repository.get_url_by_short_code(self.db, short_code=short_code)
+            if not db_url:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Short URL not found")
+
+            # Convert to dict and cache in Redis with 1 minute TTL
+            serialized_stats = self._model_to_dict(db_url)
+            await self.redis.set(f"stats:{short_code}", json.dumps(serialized_stats), ex=60)
+            
+            return serialized_stats
+
+        except Exception as e:
+            logger.error(f"Error in get_url_stats: {e}", exc_info=True)
+            raise Exception(f"Failed to get URL stats: {str(e)}")
