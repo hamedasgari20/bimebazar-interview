@@ -23,6 +23,65 @@ The URL Shortener service is built using a modern architecture with the followin
    - Implements caching with TTL (Time To Live)
    - Improves response times for popular URLs
 
+## Detailed System Design
+
+### Components and Flow
+
+1. **URL Creation Flow (POST /shorten)**
+   - Client sends a POST request with the long URL
+   - System checks Redis cache with long TTL for existing mapping
+   - If not found, stores in PostgreSQL database (URLMapping table)
+   - Caches the new mapping in Redis
+   - Returns the generated short code to the client
+
+2. **URL Redirection Flow (GET /{short_code})**
+   - Client requests short URL redirection
+   - System checks Redis cache with long TTL
+   - If found, redirects immediately
+   - If not found, queries PostgreSQL
+   - Background tasks:
+     - Increments visit count in URLMapping table
+     - Creates visit log entry in VisitLog table
+
+3. **Statistics Flow (GET /stats/{short_code})**
+   - Client requests URL statistics
+   - System checks Redis cache (1-minute TTL)
+   - If not found, queries PostgreSQL
+   - Returns visit count and other analytics
+   - Caches results in Redis for 1 minute
+
+### Database Schema
+
+1. **URLMapping Table**
+   - UniqueID
+   - Rows containing URL mapping data
+   - Visit count tracking
+
+2. **VisitLog Table**
+   - UniqueID
+   - Rows containing visit data
+   - Background logging system
+
+### Caching Strategy
+
+- **Multi-level Redis Caching**
+  - Long TTL for URL mappings
+  - Short TTL (1 minute) for statistics
+  - Background updates for visit counts
+  - Optimized for read-heavy operations
+
+### Performance Optimizations
+
+1. **Background Processing**
+   - Asynchronous visit logging
+   - Non-blocking visit count updates
+   - Parallel database operations
+
+2. **Cache Management**
+   - Intelligent TTL settings
+   - Cache warming for popular URLs
+   - Distributed caching for scalability
+
 ## Project Description
 
 This URL Shortener service provides a robust and scalable solution for creating short URLs from long ones. The service includes features like:
